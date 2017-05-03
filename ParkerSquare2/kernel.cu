@@ -5,13 +5,26 @@
 #include <stdio.h>
 #include "CombinationIt.h"
 #include <list>
+#include "device_atomic_functions.h"
 
 #define BLOCKS 709;
 #define THREADS 512;
+#define N  1000;//amount of results
+
 
 __global__ void addKernel(int * c);
 
 cudaError_t addWithCuda(int *c);
+
+
+__device__ int myPushBack(int* result,int *results) {
+
+	int pointer= atomicAdd(results,1);
+	for (int i = 0; i < 9; i++) {
+		results[pointer + i] = result[i];
+	}
+	return 0;
+}
 
 __device__ void factorial(long * number) {
 	int n = (int) *number;
@@ -22,6 +35,7 @@ __device__ void factorial(long * number) {
 		n--;
 		*number *= n;
 	}
+	return;
 }
 
 __device__ bool magicSquare(int *c) {
@@ -60,7 +74,7 @@ __device__ void getIth(int *c, int *index) {
 	
 	*index = c[i];
 	c[i] = -1;
-
+	return;
 }
 
 /*
@@ -77,7 +91,7 @@ __device__ int* largestC(int y, int x,int * factorial) {
 }
 
 
-__device__ void getPermutation(int * permu, int *index, int* factorial) {
+__device__ void getPermutation(int *permu, int *index, int* factorial) {
 	int temp[] = { 0,1,2,3,4,5,6,7,8 };
 	int *ordering = new int[9];
 	for (int i = 0; i < 9; i++) {
@@ -90,12 +104,17 @@ __device__ void getPermutation(int * permu, int *index, int* factorial) {
 	//order the actual array into the correct order
 	int *reordered = new int[9];
 	for (int i = 0; i < 9; i++) {
-		reordered[i] = permu[ordering[i]];
+		int k = ordering[i];
+		int j = permu[k];
+		if (k > 8 || k < 0) {
+			k = 0;
+		}                                                                                                                                                
+		reordered[i] = 5;
 	}
 	for (int i = 0; i < 9; i++) {
 		permu[i] = reordered[i];
 	}
-	
+	return;
 }
 
 __device__ void initialize(int c[]) {
@@ -103,23 +122,39 @@ __device__ void initialize(int c[]) {
 	for (int i = 1; i < 9; i++) {
 		c[i] = c[i - 1] * i;
 	}
+	return;
 }
 
-__global__ void addKernel(int *c,int * factorial)
+__global__ void addKernel(int *c, int * factorial, int* results)
 {
 	int index = blockDim.x*blockIdx.x + threadIdx.x;
-	int *c2 = &c[index * 9];
-	if (index < 362880) {//ignore cases which are outside of the 9! range
-		getPermutation(c2, &index, factorial);
+	int *ccopy = new int[9];
+	for (int i = 0; i < 9; i++) {
+		ccopy[i] = c[i];
+	}
+	if (index > 362880) {//ignore cases which are outside of the 9! range
+		ccopy[0] = 0;
+		return;
+	}
+	else {
+		getPermutation(ccopy, &index, factorial);
+		bool correct = magicSquare(ccopy);
+
+		if (!correct) {
+			results[0] = 0;
+			myPushBack(ccopy, results);
+		}
+		return;
 	}
 }
+
 
 int main()
 {
 	int c[9] = { 0,1,2,3,4,5,6,7,8 };
     // Add vectors in parallel.
     cudaError_t cudaStatus = addWithCuda(c);
-    if (cudaStatus != cudaSuccess) {
+                                                                                                                                                                                                                                                                                                if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "addWithCuda failed!");
         return 1;
     }
@@ -151,16 +186,9 @@ cudaError_t addWithCuda(int *c)
 	
 	int t =  BLOCKS;
 	t *= THREADS;
-	int *ccopy = new int[t*9];
+	int *d_results =0;
 	
 
-	for (int i = 0; i < t; i++) {
-		for (int j = 0; j < 9; j++) {
-			ccopy[i * 9 + j] = c[j];
-		}
-	}
-
-	printf("here");
 
     int *dev_c = 0;
     cudaError_t cudaStatus;
@@ -180,12 +208,26 @@ cudaError_t addWithCuda(int *c)
         goto Error;
     }
 
+	cudaStatus = cudaDeviceSetLimit(cudaLimitMallocHeapSize,1024*1000*50);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cuda limit malloc failed!");
+		goto Error;
+	}
+
     // Allocate GPU buffers for three vectors (two input, one output)    .
-    cudaStatus = cudaMalloc((void**)&dev_c,t*9*sizeof(int));
+    cudaStatus = cudaMalloc((void**)&dev_c,9*sizeof(int));
     if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "cudaMalloc failed!");
         goto Error;
     }
+
+	// Allocate GPU buffers for three vectors (two input, one output)    .
+	cudaStatus = cudaMalloc((void**)&d_results, (1+1000 * 9) * sizeof(int));
+                                                                                                                          	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
+		goto Error;
+	}
+
 	// Allocate GPU buffers for three vectors(two input, one output)    .
 		cudaStatus = cudaMalloc((void**)&d_factorial, 9 * sizeof(int));
 	if (cudaStatus != cudaSuccess) {
@@ -199,16 +241,17 @@ cudaError_t addWithCuda(int *c)
 		fprintf(stderr, "cudaMalloc failed!");
 		goto Error;
 	}
+	
 
 	// Allocate GPU buffers for three vectors(two input, one output)    .
-	cudaStatus = cudaMemcpy(dev_c, ccopy, t *9*sizeof(int), cudaMemcpyHostToDevice);
+	cudaStatus = cudaMemcpy(dev_c, c, 9*sizeof(int), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed!");
 		goto Error;
 	}
 
     // Launch a kernel on the GPU with one thread for each element.
-    addKernel<<<709, 512>>>(dev_c,d_factorial);
+    addKernel<<<709, 512>>>(dev_c,d_factorial,d_results);
 
     // Check for any errors launching the kernel
     cudaStatus = cudaGetLastError();
@@ -226,15 +269,17 @@ cudaError_t addWithCuda(int *c)
     }
 
     // Copy output vector from GPU buffer to host memory.
-    cudaStatus = cudaMemcpy(ccopy, dev_c, t*9 * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaStatus = cudaMemcpy(c, dev_c, 9 * sizeof(int), cudaMemcpyDeviceToHost);
     if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "cudaMemcpy failed!");
         goto Error;
     }
 
+	
 Error:
     cudaFree(dev_c);
 	cudaFree(d_factorial);
+	cudaFree(d_results);
     
     return cudaStatus;
 }
