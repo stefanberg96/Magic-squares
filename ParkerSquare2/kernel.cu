@@ -18,7 +18,9 @@ cudaError_t addWithCuda(int *c);
 
 
 __device__ int myPushBack(int* result,int *results) {
-
+	if (results[0] == 1000) {
+		return;
+	}
 	int pointer= atomicAdd(results,1);
 	for (int i = 0; i < 9; i++) {
 		results[pointer + i] = result[i];
@@ -56,60 +58,65 @@ __device__ bool magicSquare(int *c) {
 	return temp;
 }
 
-__device__ void getIth(int *c, int *index) {
-	int count = 0;
-	int firstPositiveElement = 0;
-	for (int i = 0; i < 9; i++) {
-		if (c[i] >= 0) {
-			firstPositiveElement = i;
-			break;
+__device__ int getIth(int *c, int index) {
+	int count = -1;
+	int firstPositiveElement =-1;
+
+	int i = -1;
+	do {
+		i++;
+		if (c[i] != -1) {
+			count++;
 		}
-	}
-	int i = firstPositiveElement;
-	for (; i < 9 && count < *index; i++) {
+		
+	} while (i < 8 && count < index);
+	for (; i < 9 && count < index; i++) {
 		if (c[i] != -1) {
 			count++;
 		}
 	}
 	
-	*index = c[i];
+	int k = c[i];
+	//c[i] = temp[i];
 	c[i] = -1;
-	return;
+	
+	return k;
 }
 
 /*
 give y and x calculate c such that c*y!<x, for the largest c possible
 */
-__device__ int* largestC(int y, int x,int * factorial) {
-	int *c=new int;
-	*c = 1;
-	while (x > *c*factorial[y]) {
-		(*c)++;
+__device__ int largestC(int y, int x,int * factorial) {
+	int c = 0;
+	while (x >= (c+1)*factorial[y]) {
+		c++;
 	}
-	*c -= 1;
 	return c;
 }
 
 
-__device__ void getPermutation(int *permu, int *index, int* factorial) {
+__device__ void getPermutation(int *permu, int index, int* factorial) {
 	int temp[] = { 0,1,2,3,4,5,6,7,8 };
-	int *ordering = new int[9];
+	int ordering[] = { 0,0,0,0,0,0,0,0,0 };
+	
 	for (int i = 0; i < 9; i++) {
-		int *t = largestC(8 - i, *index, factorial);
-		*index -= *t * factorial[8 - i];
-		getIth(temp, t);
-		ordering[i] = *t;
+		int t = largestC(8 - i, index, factorial);
+		index -= t * factorial[8 - i];
+		int val=getIth(temp, t);
+		ordering[i] = val;
+		permu[i] = i;
 	}
-
 	//order the actual array into the correct order
+	
 	int *reordered = new int[9];
+	
 	for (int i = 0; i < 9; i++) {
 		int k = ordering[i];
-		int j = permu[k];
-		if (k > 8 || k < 0) {
+		if (k < 0 || k>8) {
 			k = 0;
-		}                                                                                                                                                
-		reordered[i] = 5;
+		}
+		int j = permu[k];
+		reordered[i] = j;
 	}
 	for (int i = 0; i < 9; i++) {
 		permu[i] = reordered[i];
@@ -132,16 +139,16 @@ __global__ void addKernel(int *c, int * factorial, int* results)
 	for (int i = 0; i < 9; i++) {
 		ccopy[i] = c[i];
 	}
+
 	if (index > 362880) {//ignore cases which are outside of the 9! range
 		ccopy[0] = 0;
 		return;
 	}
 	else {
-		getPermutation(ccopy, &index, factorial);
+		getPermutation(ccopy, index, factorial);
 		bool correct = magicSquare(ccopy);
 
-		if (!correct) {
-			results[0] = 0;
+		if (correct) {
 			myPushBack(ccopy, results);
 		}
 		return;
@@ -199,7 +206,7 @@ cudaError_t addWithCuda(int *c)
 	for (int i = 1; i < 9; i++) {
 		factorial[i] = factorial[i - 1] * i;
 	}
-
+	
 	
     // Choose which GPU to run on, change this on a multi-GPU system.
     cudaStatus = cudaSetDevice(0);
@@ -223,10 +230,12 @@ cudaError_t addWithCuda(int *c)
 
 	// Allocate GPU buffers for three vectors (two input, one output)    .
 	cudaStatus = cudaMalloc((void**)&d_results, (1+1000 * 9) * sizeof(int));
-                                                                                                                          	if (cudaStatus != cudaSuccess) {
+	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed!");
 		goto Error;
 	}
+
+	cudaMemset(d_results, 0,(1 + 1000 * 9) * sizeof(int));
 
 	// Allocate GPU buffers for three vectors(two input, one output)    .
 		cudaStatus = cudaMalloc((void**)&d_factorial, 9 * sizeof(int));
@@ -271,7 +280,7 @@ cudaError_t addWithCuda(int *c)
     // Copy output vector from GPU buffer to host memory.
     cudaStatus = cudaMemcpy(c, dev_c, 9 * sizeof(int), cudaMemcpyDeviceToHost);
     if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMemcpy failed!");
+        fprintf(stderr, "cudaMemcpy failed!last");
         goto Error;
     }
 
