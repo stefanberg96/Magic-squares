@@ -1,0 +1,2 @@
+#TargetFrameworkVersion=v4.0:PlatformToolSet=v140:EnableManagedIncrementalBuild=false:VCToolArchitecture=Native32Bit:WindowsTargetPlatformVersion=8.1
+test|Win32|C:\Users\s140878\documents\visual studio 2015\Cuda\Udacity\ParkerSquare2\|
