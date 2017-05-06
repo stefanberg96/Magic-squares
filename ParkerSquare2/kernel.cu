@@ -13,7 +13,7 @@
 
 
 __global__ void addKernel(int * c);
-
+static void reportMemStatus();
 cudaError_t addWithCuda(int *c);
 
 
@@ -79,7 +79,8 @@ __device__ int getIth(int *c, int index) {
 	int k = c[i];
 	//c[i] = temp[i];
 	c[i] = -1;
-	
+	free(&firstPositiveElement);
+	free(&count);
 	return k;
 }
 
@@ -121,6 +122,9 @@ __device__ void getPermutation(int *permu, int index, int* factorial) {
 	for (int i = 0; i < 9; i++) {
 		permu[i] = reordered[i];
 	}
+	free(reordered);
+	free(temp);
+	free(ordering);
 	return;
 }
 
@@ -160,8 +164,9 @@ int main()
 {
 	int c[9] = { 0,1,2,3,4,5,6,7,8 };
     // Add vectors in parallel.
+	reportMemStatus();/*
     cudaError_t cudaStatus = addWithCuda(c);
-                                                                                                                                                                                                                                                                                                if (cudaStatus != cudaSuccess) {
+       if(cudaStatus!= cudaSuccess){                                                                                                                                                                                                                                                                                         if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "addWithCuda failed!");
         return 1;
     }
@@ -185,6 +190,43 @@ int main()
 			t[0], t[1 ], t[2 ], t[3 ], t[4 ], t[5 ], t[6 ], t[7 ], t[8 ]);
 	}*/
     return 0;
+}
+
+static void reportMemStatus() {
+
+	// show memory usage of GPU
+	size_t free_byte;
+	size_t total_byte;
+	size_t malloc_byte;
+	cudaError_t cudaStatus = cudaSetDevice(0);
+	if (cudaSuccess != cudaStatus) {
+		printf("Error: cudaMemGetInfo fails, %s \n",
+			cudaGetErrorString(cudaStatus));
+		return;
+	}
+	cudaError_t cuda_status;
+	/*
+	cudaError_t cuda_status = cudaMemGetInfo(&free_byte, &total_byte);
+
+	if (cudaSuccess != cuda_status) {
+		printf("Error: cudaMemGetInfo fails, %s \n",
+			cudaGetErrorString(cuda_status));
+		return;
+	}
+	*/
+	cuda_status = cudaDeviceGetLimit(&malloc_byte, cudaLimitMallocHeapSize);
+	if (cudaSuccess != cuda_status) {
+		printf("Error: cudaDeviceGetLimit fails, %s \n",
+			cudaGetErrorString(cuda_status));
+		return;
+	}
+
+	double free_db = (double)free_byte;
+	double total_db = (double)total_byte;
+	double used_db = total_db - free_db;
+	printf("GPU memory usage: used = %f, free = %f MB, total = %f MB, malloc limit = %f MB\n",
+		used_db / 1024.0 / 1024.0, free_db / 1024.0 / 1024.0,
+		total_db / 1024.0 / 1024.0, malloc_byte / 1024.0 / 1024.0);
 }
 
 
@@ -215,7 +257,7 @@ cudaError_t addWithCuda(int *c)
         goto Error;
     }
 
-	cudaStatus = cudaDeviceSetLimit(cudaLimitMallocHeapSize,1024*1000*50);
+	cudaStatus = cudaDeviceSetLimit(cudaLimitMallocHeapSize,1024*50);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cuda limit malloc failed!");
 		goto Error;
