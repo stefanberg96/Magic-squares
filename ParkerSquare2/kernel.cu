@@ -21,7 +21,7 @@ __device__ int myPushBack(int* result,int *results) {
 	if (results[0] == 1000) {
 		return;
 	}
-	int pointer= atomicAdd(results,1);
+	int pointer= atomicAdd(result[0],1);
 	for (int i = 0; i < 9; i++) {
 		results[pointer + i] = result[i];
 	}
@@ -146,6 +146,7 @@ __global__ void addKernel(int *c, int * factorial, int* results)
 
 	if (index > 362880) {//ignore cases which are outside of the 9! range
 		ccopy[0] = 0;
+		free(ccopy);
 		return;
 	}
 	else {
@@ -155,6 +156,7 @@ __global__ void addKernel(int *c, int * factorial, int* results)
 		if (correct) {
 			myPushBack(ccopy, results);
 		}
+		free(ccopy);   
 		return;
 	}
 }
@@ -163,34 +165,35 @@ __global__ void addKernel(int *c, int * factorial, int* results)
 int main()
 {
 	int c[9] = { 0,1,2,3,4,5,6,7,8 };
-    // Add vectors in parallel.
-	reportMemStatus();/*
-    cudaError_t cudaStatus = addWithCuda(c);
-       if(cudaStatus!= cudaSuccess){                                                                                                                                                                                                                                                                                         if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "addWithCuda failed!");
-        return 1;
-    }
+	// Add vectors in parallel.
+	reportMemStatus();
+	cudaError_t cudaStatus = addWithCuda(c);
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "addWithCuda failed!");
+			return 1;
+		}
 
-    printf("{%d,%d,%d,%d,%d,%d,%d,%d,%d}\n",
-        c[0], c[1], c[2], c[3], c[4],c[5],c[6],c[7],c[8]);
-
-    // cudaDeviceReset must be called before exiting in order for profiling and
-    // tracing tools such as Nsight and Visual Profiler to show complete traces.
-    cudaStatus = cudaDeviceReset();
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaDeviceReset failed!");
-        return 1;
-    }
-
-	//testing
-	init(20, 9, choose(20, 9));/*
-	while (hasNext()) {
-		int *t= next();
 		printf("{%d,%d,%d,%d,%d,%d,%d,%d,%d}\n",
-			t[0], t[1 ], t[2 ], t[3 ], t[4 ], t[5 ], t[6 ], t[7 ], t[8 ]);
-	}*/
-    return 0;
-}
+			c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8]);
+
+		// cudaDeviceReset must be called before exiting in order for profiling and
+		// tracing tools such as Nsight and Visual Profiler to show complete traces.
+		cudaStatus = cudaDeviceReset();
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaDeviceReset failed!");
+			return 1;
+		}
+
+		//testing
+		/*
+		init(20, 9, choose(20, 9));
+		while (hasNext()) {
+			int *t= next();
+			printf("{%d,%d,%d,%d,%d,%d,%d,%d,%d}\n",
+				t[0], t[1 ], t[2 ], t[3 ], t[4 ], t[5 ], t[6 ], t[7 ], t[8 ]);
+		}*/
+		return 0;
+	}
 
 static void reportMemStatus() {
 
@@ -205,15 +208,19 @@ static void reportMemStatus() {
 		return;
 	}
 	cudaError_t cuda_status;
-	/*
-	cudaError_t cuda_status = cudaMemGetInfo(&free_byte, &total_byte);
+	
+	cuda_status = cudaMemGetInfo(&free_byte, &total_byte);
 
 	if (cudaSuccess != cuda_status) {
 		printf("Error: cudaMemGetInfo fails, %s \n",
 			cudaGetErrorString(cuda_status));
 		return;
 	}
-	*/
+	cuda_status=cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024 * 1000 * 500);
+	if (cuda_status != cudaSuccess) {
+		printf("fdskjfhdskajfdsafdsafs");
+	}
+	
 	cuda_status = cudaDeviceGetLimit(&malloc_byte, cudaLimitMallocHeapSize);
 	if (cudaSuccess != cuda_status) {
 		printf("Error: cudaDeviceGetLimit fails, %s \n",
@@ -257,7 +264,7 @@ cudaError_t addWithCuda(int *c)
         goto Error;
     }
 
-	cudaStatus = cudaDeviceSetLimit(cudaLimitMallocHeapSize,1024*50);
+	cudaStatus = cudaDeviceSetLimit(cudaLimitMallocHeapSize,1024*1000*500);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cuda limit malloc failed!");
 		goto Error;
@@ -325,6 +332,18 @@ cudaError_t addWithCuda(int *c)
         fprintf(stderr, "cudaMemcpy failed!last");
         goto Error;
     }
+	int *results = new int[(1 + 1000 * 9)];
+	// Copy output vector from GPU buffer to host memory.
+	cudaStatus = cudaMemcpy(results, d_results, (1 + 1000 * 9) * sizeof(int), cudaMemcpyDeviceToHost);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed!last");
+		goto Error;
+	}
+	int nbresults = results[0];
+	for (int i = 0; i < nbresults; i++) {
+		printf("magic square {%d,%d,%d,%d,%d,%d,%d,%d,%d}\n",
+			 results[1 + i * 9], results[2], results[3 + i * 9], results[4 + i * 9], results[5 + i * 9], results[6 + i * 9], results[7 + i * 9], results[8 + i * 9],results[9+i*9]);
+	}
 
 	
 Error:
