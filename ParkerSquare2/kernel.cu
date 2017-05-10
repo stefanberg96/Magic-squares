@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include "CombinationIt.h"
 #include <list>
-#include "device_atomic_functions.h"
+#include "device_functions.h"
 
 #define BLOCKS 709;
 #define THREADS 512;
@@ -17,13 +17,23 @@ static void reportMemStatus();
 cudaError_t addWithCuda(int *c);
 
 
-__device__ int myPushBack(int* result,int *results) {
-	if (results[0] == 1000) {
+__device__ int myPushBack(int* result,int *results, int index) {
+	/*if (results[0] >= 1000) {
 		return;
 	}
-	int pointer= atomicAdd(result[0],1);
+	int pointer= atomicAdd(&results[0],1);
+	if (pointer >= 1000) {
+		return;
+	}*/
+	int pointer;
+	if (index < 32000 && index>31000) {
+		pointer = index;
+	}
+	else {
+		return;
+	}
 	for (int i = 0; i < 9; i++) {
-		results[pointer + i] = result[i];
+		results[pointer*9 + i+1] = result[i];
 	}
 	return 0;
 }
@@ -40,7 +50,9 @@ __device__ void factorial(long * number) {
 	return;
 }
 
+
 __device__ bool magicSquare(int *c) {
+	
 	int r1 = c[0] + c[1] + c[2];
 	int r2 = c[3] + c[4] + c[5];
 	int r3 = c[6] + c[7] + c[8];
@@ -77,10 +89,7 @@ __device__ int getIth(int *c, int index) {
 	}
 	
 	int k = c[i];
-	//c[i] = temp[i];
 	c[i] = -1;
-	free(&firstPositiveElement);
-	free(&count);
 	return k;
 }
 
@@ -97,34 +106,37 @@ __device__ int largestC(int y, int x,int * factorial) {
 
 
 __device__ void getPermutation(int *permu, int index, int* factorial) {
-	int temp[] = { 0,1,2,3,4,5,6,7,8 };
-	int ordering[] = { 0,0,0,0,0,0,0,0,0 };
+	int *temp = new int[9];
+	int *ordering = new int[9];
 	
+	for (int i = 0; i < 9; i++) {
+		temp[i] = i;
+	}
 	for (int i = 0; i < 9; i++) {
 		int t = largestC(8 - i, index, factorial);
 		index -= t * factorial[8 - i];
 		int val=getIth(temp, t);
 		ordering[i] = val;
-		permu[i] = i;
 	}
 	//order the actual array into the correct order
 	
 	int *reordered = new int[9];
-	
+
+	for (int i = 0; i < 9; i++) {
+		permu[i] = i;
+	}
+	/*
 	for (int i = 0; i < 9; i++) {
 		int k = ordering[i];
-		if (k < 0 || k>8) {
-			k = 0;
-		}
 		int j = permu[k];
 		reordered[i] = j;
 	}
 	for (int i = 0; i < 9; i++) {
 		permu[i] = reordered[i];
-	}
-	free(reordered);
-	free(temp);
-	free(ordering);
+	}*/
+	delete [] reordered;
+	delete [] temp;
+	delete [] ordering;
 	return;
 }
 
@@ -146,17 +158,23 @@ __global__ void addKernel(int *c, int * factorial, int* results)
 
 	if (index > 362880) {//ignore cases which are outside of the 9! range
 		ccopy[0] = 0;
-		free(ccopy);
+		delete[] ccopy;
 		return;
 	}
 	else {
 		getPermutation(ccopy, index, factorial);
 		bool correct = magicSquare(ccopy);
 
-		if (correct) {
-			myPushBack(ccopy, results);
-		}
-		free(ccopy);   
+		//if (correct) {
+			/*int * temp = new int[9];
+			for (int i = 0; i < 9; i++) {
+				temp[i] = i;
+			}*/
+			myPushBack(ccopy, results,index);
+			//delete[] temp;
+		//}
+		delete[] ccopy;
+		
 		return;
 	}
 }
@@ -339,6 +357,7 @@ cudaError_t addWithCuda(int *c)
 		fprintf(stderr, "cudaMemcpy failed!last");
 		goto Error;
 	}
+	results[0] = 289;
 	int nbresults = results[0];
 	for (int i = 0; i < nbresults; i++) {
 		printf("magic square {%d,%d,%d,%d,%d,%d,%d,%d,%d}\n",
