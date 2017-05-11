@@ -17,23 +17,16 @@ static void reportMemStatus();
 cudaError_t addWithCuda(int *c);
 
 
-__device__ int myPushBack(int* result,int *results, int index) {
-	/*if (results[0] >= 1000) {
+__device__ int myPushBack(int* result,int *results) {
+	if (results[0] >= 1000) {
 		return;
 	}
 	int pointer= atomicAdd(&results[0],1);
 	if (pointer >= 1000) {
 		return;
-	}*/
-	int pointer;
-	if (index < 32000 && index>31000) {
-		pointer = index;
-	}
-	else {
-		return;
 	}
 	for (int i = 0; i < 9; i++) {
-		results[pointer*9 + i+1] = result[i];
+		results[pointer * 9 + i + 1] = result[i];
 	}
 	return 0;
 }
@@ -121,11 +114,6 @@ __device__ void getPermutation(int *permu, int index, int* factorial) {
 	//order the actual array into the correct order
 	
 	int *reordered = new int[9];
-
-	for (int i = 0; i < 9; i++) {
-		permu[i] = i;
-	}
-	/*
 	for (int i = 0; i < 9; i++) {
 		int k = ordering[i];
 		int j = permu[k];
@@ -133,7 +121,7 @@ __device__ void getPermutation(int *permu, int index, int* factorial) {
 	}
 	for (int i = 0; i < 9; i++) {
 		permu[i] = reordered[i];
-	}*/
+	}
 	delete [] reordered;
 	delete [] temp;
 	delete [] ordering;
@@ -165,14 +153,9 @@ __global__ void addKernel(int *c, int * factorial, int* results)
 		getPermutation(ccopy, index, factorial);
 		bool correct = magicSquare(ccopy);
 
-		//if (correct) {
-			/*int * temp = new int[9];
-			for (int i = 0; i < 9; i++) {
-				temp[i] = i;
-			}*/
-			myPushBack(ccopy, results,index);
-			//delete[] temp;
-		//}
+		if (correct) {
+			myPushBack(ccopy, results);
+		}
 		delete[] ccopy;
 		
 		return;
@@ -203,13 +186,8 @@ int main()
 		}
 
 		//testing
-		/*
-		init(20, 9, choose(20, 9));
-		while (hasNext()) {
-			int *t= next();
-			printf("{%d,%d,%d,%d,%d,%d,%d,%d,%d}\n",
-				t[0], t[1 ], t[2 ], t[3 ], t[4 ], t[5 ], t[6 ], t[7 ], t[8 ]);
-		}*/
+		
+		
 		return 0;
 	}
 
@@ -319,49 +297,51 @@ cudaError_t addWithCuda(int *c)
 	}
 	
 
-	// Allocate GPU buffers for three vectors(two input, one output)    .
-	cudaStatus = cudaMemcpy(dev_c, c, 9*sizeof(int), cudaMemcpyHostToDevice);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMalloc failed!");
-		goto Error;
-	}
+	init(20, 9, choose(20, 9));
+	int *sets = new int[9];
+	while (hasNext()) {
+		sets = next();
 
-    // Launch a kernel on the GPU with one thread for each element.
-    addKernel<<<709, 512>>>(dev_c,d_factorial,d_results);
 
-    // Check for any errors launching the kernel
-    cudaStatus = cudaGetLastError();
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
-        goto Error;
-    }
-    
-    // cudaDeviceSynchronize waits for the kernel to finish, and returns
-    // any errors encountered during the launch.
-    cudaStatus = cudaDeviceSynchronize();
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
-        goto Error;
-    }
 
-    // Copy output vector from GPU buffer to host memory.
-    cudaStatus = cudaMemcpy(c, dev_c, 9 * sizeof(int), cudaMemcpyDeviceToHost);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMemcpy failed!last");
-        goto Error;
-    }
-	int *results = new int[(1 + 1000 * 9)];
-	// Copy output vector from GPU buffer to host memory.
-	cudaStatus = cudaMemcpy(results, d_results, (1 + 1000 * 9) * sizeof(int), cudaMemcpyDeviceToHost);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy failed!last");
-		goto Error;
-	}
-	results[0] = 289;
-	int nbresults = results[0];
-	for (int i = 0; i < nbresults; i++) {
-		printf("magic square {%d,%d,%d,%d,%d,%d,%d,%d,%d}\n",
-			 results[1 + i * 9], results[2], results[3 + i * 9], results[4 + i * 9], results[5 + i * 9], results[6 + i * 9], results[7 + i * 9], results[8 + i * 9],results[9+i*9]);
+		// Allocate GPU buffers for three vectors(two input, one output)    .
+		cudaStatus = cudaMemcpy(dev_c, sets, 9 * sizeof(int), cudaMemcpyHostToDevice);
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaMalloc failed!");
+			goto Error;
+		}
+
+		// Launch a kernel on the GPU with one thread for each element.
+		addKernel << <709, 512 >> > (dev_c, d_factorial, d_results);
+
+		// Check for any errors launching the kernel
+		cudaStatus = cudaGetLastError();
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+			goto Error;
+		}
+
+		// cudaDeviceSynchronize waits for the kernel to finish, and returns
+		// any errors encountered during the launch.
+		cudaStatus = cudaDeviceSynchronize();
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
+			goto Error;
+		}
+
+		int *results = new int[(1 + 1000 * 9)];
+		// Copy output vector from GPU buffer to host memory.
+		cudaStatus = cudaMemcpy(results, d_results, (1 + 1000 * 9) * sizeof(int), cudaMemcpyDeviceToHost);
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaMemcpy failed!last");
+			goto Error;
+		}
+		int nbresults = results[0];
+		for (int i = 0; i < nbresults; i++) {
+			printf("magic square {%d,%d,%d,%d,%d,%d,%d,%d,%d}\n",
+				results[1 + i * 9], results[2 + i * 9], results[3 + i * 9], results[4 + i * 9], results[5 + i * 9], results[6 + i * 9], results[7 + i * 9], results[8 + i * 9], results[9 + i * 9]);
+		}
+
 	}
 
 	
