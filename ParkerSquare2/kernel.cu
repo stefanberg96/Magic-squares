@@ -75,11 +75,11 @@ __device__ int getIth(int *c, int index) {
 		}
 		
 	} while (i < 8 && count < index);
-	for (; i < 9 && count < index; i++) {
+	/*for (; i < 9 && count < index; i++) {
 		if (c[i] != -1) {
 			count++;
 		}
-	}
+	}*/
 	
 	int k = c[i];
 	c[i] = -1;
@@ -297,7 +297,7 @@ cudaError_t addWithCuda(int *c)
 	}
 	
 
-	init(20, 9, choose(20, 9));
+	init(14, 9, choose(14, 9));
 	int *sets = new int[9];
 	while (hasNext()) {
 		sets = next();
