@@ -226,9 +226,11 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CombinationIt.cpp" />
+    <ClCompile Include="PermutationIt.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CombinationIt.h" />
+    <ClInclude Include="PermutationIt.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

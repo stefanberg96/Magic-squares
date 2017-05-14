@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include "CombinationIt.h"
+#include "PermutationIt.h"
 #include <list>
 #include "device_functions.h"
 
@@ -96,7 +97,18 @@ __device__ int largestC(int y, int x,int * factorial) {
 	}
 	return c;
 }
-
+__device__ void reorderd(int* set, int* pos) {
+	int *reordered = new int[9];
+	for (int i = 0; i < 9; i++) {
+		int k = pos[i];
+		int j = set[k];
+		reordered[i] = j;
+	}
+	for (int i = 0; i < 9; i++) {
+		set[i] = reordered[i];
+	}
+	delete[] reordered;
+}
 
 __device__ void getPermutation(int *permu, int index, int* factorial) {
 	int *temp = new int[9];
@@ -113,16 +125,7 @@ __device__ void getPermutation(int *permu, int index, int* factorial) {
 	}
 	//order the actual array into the correct order
 	
-	int *reordered = new int[9];
-	for (int i = 0; i < 9; i++) {
-		int k = ordering[i];
-		int j = permu[k];
-		reordered[i] = j;
-	}
-	for (int i = 0; i < 9; i++) {
-		permu[i] = reordered[i];
-	}
-	delete [] reordered;
+	reorderd(permu,ordering);
 	delete [] temp;
 	delete [] ordering;
 	return;
@@ -136,35 +139,34 @@ __device__ void initialize(int c[]) {
 	return;
 }
 
-__global__ void addKernel(int *c, int * factorial, int* results)
+__global__ void addKernel(int *c, int * factorial, int* results, int* d_pos)
 {
 	int index = blockDim.x*blockIdx.x + threadIdx.x;
+	if (index > 362880) {
+		return;
+	}
 	int *ccopy = new int[9];
 	for (int i = 0; i < 9; i++) {
 		ccopy[i] = c[i];
 	}
 
-	if (index > 362880) {//ignore cases which are outside of the 9! range
-		ccopy[0] = 0;
-		delete[] ccopy;
-		return;
-	}
-	else {
-		getPermutation(ccopy, index, factorial);
-		bool correct = magicSquare(ccopy);
+	//getPermutation(ccopy, index, factorial);
+	reorderd(ccopy, &d_pos[index]);
+	index = 10;
+	bool correct = magicSquare(ccopy);
 
-		if (correct) {
-			myPushBack(ccopy, results);
-		}
-		delete[] ccopy;
+	if (correct) {
+		myPushBack(ccopy, results);
+	}
+	delete[] ccopy;
 		
-		return;
-	}
+	return;
+	
 }
-
 
 int main()
 {
+	
 	int c[9] = { 0,1,2,3,4,5,6,7,8 };
 	// Add vectors in parallel.
 	reportMemStatus();
@@ -174,9 +176,6 @@ int main()
 			return 1;
 		}
 
-		printf("{%d,%d,%d,%d,%d,%d,%d,%d,%d}\n",
-			c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8]);
-
 		// cudaDeviceReset must be called before exiting in order for profiling and
 		// tracing tools such as Nsight and Visual Profiler to show complete traces.
 		cudaStatus = cudaDeviceReset();
@@ -184,12 +183,11 @@ int main()
 			fprintf(stderr, "cudaDeviceReset failed!");
 			return 1;
 		}
-
-		//testing
-		
 		
 		return 0;
 	}
+
+
 
 static void reportMemStatus() {
 
@@ -295,14 +293,28 @@ cudaError_t addWithCuda(int *c)
 		fprintf(stderr, "cudaMalloc failed!");
 		goto Error;
 	}
-	
+	int* d_pos = 0;
+	int *h_pos = new int[362880 * 9];
+	cudaStatus=cudaMalloc((void**)&d_pos, 362880 * 9 * sizeof(int));
+	int *arr = initPerm();
+	int i = 0;
+	while (hasNextPerm()) {
+		nextPerm();
+		for (int j = 0; j < 9; j++) {
+			h_pos[j + i * 9] = arr[j];
+		}
+		i++;
+	}
 
-	init(14, 9, choose(14, 9));
+	cudaStatus=cudaMemcpy(d_pos, h_pos, 362880 * 9 * sizeof(int), cudaMemcpyHostToDevice);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed!");
+		goto Error;
+	}
+	init(12, 9, choose(12, 9));
 	int *sets = new int[9];
 	while (hasNext()) {
 		sets = next();
-
-
 
 		// Allocate GPU buffers for three vectors(two input, one output)    .
 		cudaStatus = cudaMemcpy(dev_c, sets, 9 * sizeof(int), cudaMemcpyHostToDevice);
@@ -312,7 +324,7 @@ cudaError_t addWithCuda(int *c)
 		}
 
 		// Launch a kernel on the GPU with one thread for each element.
-		addKernel << <709, 512 >> > (dev_c, d_factorial, d_results);
+		addKernel << <709, 512 >> > (dev_c, d_factorial, d_results,d_pos);
 
 		// Check for any errors launching the kernel
 		cudaStatus = cudaGetLastError();
@@ -349,6 +361,7 @@ Error:
     cudaFree(dev_c);
 	cudaFree(d_factorial);
 	cudaFree(d_results);
+	cudaFree(d_pos);
     
     return cudaStatus;
 }
